@@ -1,0 +1,17 @@
+{
+  "workspace": {
+    "id": "d2ab189f-83c4-4a39-bd5d-a035e75e0788"
+  },
+  "entities": {
+    "collections": [
+      "../postman/collections/atlas-payments-atlas-treasury-api_51415493-2cdd5c17-5382-4796-b0ef-70e334526eef.postman_collection.json",
+      "../postman/collections/Atlas Treasury API_51415493-906b0cdb-d078-4e72-bf6e-385ff03da70b.postman_collection.json"
+    ],
+    "environments": [
+      "../postman/environments/Atlas Treasury - Production_af0d955b-3a5f-4964-97a1-338cb24c55cf.postman_environment.json"
+    ],
+    "specs": [],
+    "flows": [],
+    "globals": []
+  }
+}
