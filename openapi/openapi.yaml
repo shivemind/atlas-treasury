@@ -1,0 +1,2610 @@
+openapi: 3.1.0
+info:
+  title: Atlas Treasury API
+  version: 0.2.0
+  description: Transfers, reserves, holds, reconciliation, and settlement operations
+  contact:
+    name: AtlasPayments Team
+    url: https://github.com/shivemind/atlaspayments
+servers:
+  - url: http://localhost:3000
+    description: Local development server. Override via Postman {{baseUrl}} environment variable.
+tags:
+  - name: Transfers
+    description: Transfers between accounts
+  - name: Reserves
+    description: Reserve placement and hold management
+  - name: Reconciliation
+    description: Reconciliation imports, exports, period close, and diffs
+paths:
+  /api/v1/transfers:
+    get:
+      summary: List transfers
+      description: Returns a paginated list of transfers for the authenticated merchant.
+      x-platform:
+        kind: report
+        entity: Transfer
+        affectsLedger: false
+      operationId: listTransfers
+      tags:
+        - Transfers
+      security:
+        - MerchantKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+      responses:
+        "200":
+          description: Paginated list of transfers.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - pagination
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                  pagination:
+                    $ref: "#/components/schemas/PaginationMeta"
+        "401":
+          description: Missing or invalid API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      summary: Create a transfer
+      description: Creates a new transfer between accounts for the authenticated merchant.
+      x-platform:
+        kind: transition
+        entity: Transfer
+        affectsLedger: true
+        stateChanges:
+          - created
+      operationId: createTransfer
+      tags:
+        - Transfers
+      security:
+        - MerchantKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - amount
+                - currency
+              properties:
+                amount:
+                  type: integer
+                  minimum: 1
+                currency:
+                  type: string
+                  minLength: 3
+                  maxLength: 3
+                description:
+                  type: string
+                metadata:
+                  type: object
+                  additionalProperties: true
+      responses:
+        "201":
+          description: Transfer created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - transfer
+                properties:
+                  transfer:
+                    type: object
+        "400":
+          description: Invalid request payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Idempotency key conflict.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/transfers/{id}:
+    get:
+      summary: Get transfer by ID
+      description: Retrieves a single transfer by its ID.
+      x-platform:
+        kind: report
+        entity: Transfer
+        affectsLedger: false
+      operationId: getTransferById
+      tags:
+        - Transfers
+      security:
+        - MerchantKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+      responses:
+        "200":
+          description: Transfer details.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - transfer
+                properties:
+                  transfer:
+                    type: object
+        "401":
+          description: Missing or invalid API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Transfer not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      summary: Update transfer metadata
+      description: Updates mutable fields on an existing transfer.
+      x-platform:
+        kind: transition
+        entity: Transfer
+        affectsLedger: false
+        stateChanges:
+          - metadata_updated
+      operationId: updateTransfer
+      tags:
+        - Transfers
+      security:
+        - MerchantKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                description:
+                  type: string
+                metadata:
+                  type: object
+                  additionalProperties: true
+      responses:
+        "200":
+          description: Transfer updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - transfer
+                properties:
+                  transfer:
+                    type: object
+        "400":
+          description: Invalid request payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Transfer not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/transfers/{id}/reverse:
+    post:
+      summary: Reverse a transfer
+      description: Reverses a completed transfer, returning funds to the source.
+      x-platform:
+        kind: transition
+        entity: Transfer
+        affectsLedger: true
+        stateChanges:
+          - completed -> reversed
+      operationId: reverseTransfer
+      tags:
+        - Transfers
+      security:
+        - MerchantKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+      responses:
+        "200":
+          description: Transfer reversed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - transfer
+                properties:
+                  transfer:
+                    type: object
+        "401":
+          description: Missing or invalid API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Transfer not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Transfer is not in a reversible state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/reserves:
+    get:
+      summary: List reserves
+      description: Returns a paginated list of reserves for the authenticated merchant.
+      x-platform:
+        kind: report
+        entity: Reserve
+        affectsLedger: false
+      operationId: listReserves
+      tags:
+        - Reserves
+      security:
+        - MerchantKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+      responses:
+        "200":
+          description: Paginated list of reserves.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - pagination
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                  pagination:
+                    $ref: "#/components/schemas/PaginationMeta"
+        "401":
+          description: Missing or invalid API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      summary: Create a reserve
+      description: Creates a reserve to hold funds for the authenticated merchant.
+      x-platform:
+        kind: transition
+        entity: Reserve
+        affectsLedger: true
+        stateChanges:
+          - created
+      operationId: createReserve
+      tags:
+        - Reserves
+      security:
+        - MerchantKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - amount
+                - currency
+              properties:
+                amount:
+                  type: integer
+                  minimum: 1
+                currency:
+                  type: string
+                  minLength: 3
+                  maxLength: 3
+                reason:
+                  type: string
+                metadata:
+                  type: object
+                  additionalProperties: true
+      responses:
+        "201":
+          description: Reserve created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - reserve
+                properties:
+                  reserve:
+                    type: object
+        "400":
+          description: Invalid request payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Idempotency key conflict.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/reserves/{id}:
+    get:
+      summary: Get reserve by ID
+      description: Retrieves a single reserve by its ID.
+      x-platform:
+        kind: report
+        entity: Reserve
+        affectsLedger: false
+      operationId: getReserveById
+      tags:
+        - Reserves
+      security:
+        - MerchantKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+      responses:
+        "200":
+          description: Reserve details.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - reserve
+                properties:
+                  reserve:
+                    type: object
+        "401":
+          description: Missing or invalid API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Reserve not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      summary: Update reserve
+      description: Updates mutable fields on an existing reserve.
+      x-platform:
+        kind: transition
+        entity: Reserve
+        affectsLedger: false
+        stateChanges:
+          - metadata_updated
+      operationId: updateReserve
+      tags:
+        - Reserves
+      security:
+        - MerchantKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                metadata:
+                  type: object
+                  additionalProperties: true
+      responses:
+        "200":
+          description: Reserve updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - reserve
+                properties:
+                  reserve:
+                    type: object
+        "400":
+          description: Invalid request payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Reserve not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/reserves/{id}/release:
+    post:
+      summary: Release a reserve
+      description: Releases a reserve, returning held funds to the available balance.
+      x-platform:
+        kind: transition
+        entity: Reserve
+        affectsLedger: true
+        stateChanges:
+          - active -> released
+      operationId: releaseReserve
+      tags:
+        - Reserves
+      security:
+        - MerchantKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+      responses:
+        "200":
+          description: Reserve released.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - reserve
+                properties:
+                  reserve:
+                    type: object
+        "401":
+          description: Missing or invalid API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Reserve not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Reserve is not in a releasable state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/holds:
+    get:
+      summary: List holds
+      description: Returns a paginated list of holds for the authenticated merchant.
+      x-platform:
+        kind: report
+        entity: Hold
+        affectsLedger: false
+      operationId: listHolds
+      tags:
+        - Reserves
+      security:
+        - MerchantKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+      responses:
+        "200":
+          description: Paginated list of holds.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - pagination
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                  pagination:
+                    $ref: "#/components/schemas/PaginationMeta"
+        "401":
+          description: Missing or invalid API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      summary: Create a hold
+      description: Creates a hold to temporarily freeze funds for the authenticated merchant.
+      x-platform:
+        kind: transition
+        entity: Hold
+        affectsLedger: true
+        stateChanges:
+          - created
+      operationId: createHold
+      tags:
+        - Reserves
+      security:
+        - MerchantKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - amount
+                - currency
+              properties:
+                amount:
+                  type: integer
+                  minimum: 1
+                currency:
+                  type: string
+                  minLength: 3
+                  maxLength: 3
+                reason:
+                  type: string
+                metadata:
+                  type: object
+                  additionalProperties: true
+      responses:
+        "201":
+          description: Hold created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - hold
+                properties:
+                  hold:
+                    type: object
+        "400":
+          description: Invalid request payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Idempotency key conflict.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/holds/{id}:
+    get:
+      summary: Get hold by ID
+      description: Retrieves a single hold by its ID.
+      x-platform:
+        kind: report
+        entity: Hold
+        affectsLedger: false
+      operationId: getHoldById
+      tags:
+        - Reserves
+      security:
+        - MerchantKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+      responses:
+        "200":
+          description: Hold details.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - hold
+                properties:
+                  hold:
+                    type: object
+        "401":
+          description: Missing or invalid API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Hold not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      summary: Update hold
+      description: Updates mutable fields on an existing hold.
+      x-platform:
+        kind: transition
+        entity: Hold
+        affectsLedger: false
+        stateChanges:
+          - metadata_updated
+      operationId: updateHold
+      tags:
+        - Reserves
+      security:
+        - MerchantKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                metadata:
+                  type: object
+                  additionalProperties: true
+      responses:
+        "200":
+          description: Hold updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - hold
+                properties:
+                  hold:
+                    type: object
+        "400":
+          description: Invalid request payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Hold not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/holds/{id}/capture:
+    post:
+      summary: Capture a hold
+      description: Captures a hold, converting the frozen funds into a completed transaction.
+      x-platform:
+        kind: transition
+        entity: Hold
+        affectsLedger: true
+        stateChanges:
+          - active -> captured
+      operationId: captureHold
+      tags:
+        - Reserves
+      security:
+        - MerchantKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+      responses:
+        "200":
+          description: Hold captured.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - hold
+                properties:
+                  hold:
+                    type: object
+        "401":
+          description: Missing or invalid API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Hold not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Hold is not in a capturable state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/holds/{id}/release:
+    post:
+      summary: Release a hold
+      description: Releases a hold, returning frozen funds to the available balance.
+      x-platform:
+        kind: transition
+        entity: Hold
+        affectsLedger: true
+        stateChanges:
+          - active -> released
+      operationId: releaseHold
+      tags:
+        - Reserves
+      security:
+        - MerchantKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+      responses:
+        "200":
+          description: Hold released.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - hold
+                properties:
+                  hold:
+                    type: object
+        "401":
+          description: Missing or invalid API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Hold not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Hold is not in a releasable state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/internal/recon/sources:
+    get:
+      summary: List reconciliation sources
+      description: Returns a paginated list of reconciliation sources.
+      x-platform:
+        kind: resource
+        entity: ReconSource
+        affectsLedger: false
+      operationId: listReconSources
+      tags:
+        - Reconciliation
+      security:
+        - PlatformAdminKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+      responses:
+        "200":
+          description: Paginated list of reconciliation sources.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - pagination
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                  pagination:
+                    $ref: "#/components/schemas/PaginationMeta"
+        "401": &a1
+          description: Missing or invalid API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403": &a2
+          description: Platform admin access required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      summary: Create recon source
+      description: Creates a new reconciliation source.
+      x-platform:
+        kind: resource
+        entity: ReconSource
+        affectsLedger: false
+      operationId: createReconSource
+      tags:
+        - Reconciliation
+      security:
+        - PlatformAdminKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - type
+              properties:
+                name:
+                  type: string
+                type:
+                  type: string
+                config:
+                  type: object
+                metadata:
+                  type: object
+      responses:
+        "201":
+          description: Reconciliation source created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+        "400": &a3
+          description: Invalid request payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401": *a1
+        "403": *a2
+  /api/internal/recon/sources/{id}:
+    get:
+      summary: Get recon source
+      description: Returns a single reconciliation source by ID.
+      x-platform:
+        kind: resource
+        entity: ReconSource
+        affectsLedger: false
+      operationId: getReconSource
+      tags:
+        - Reconciliation
+      security:
+        - PlatformAdminKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+      responses:
+        "200":
+          description: Reconciliation source details.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+        "401": *a1
+        "404": &a4
+          description: Resource not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      summary: Update recon source
+      description: Updates a reconciliation source.
+      x-platform:
+        kind: resource
+        entity: ReconSource
+        affectsLedger: false
+      operationId: updateReconSource
+      tags:
+        - Reconciliation
+      security:
+        - PlatformAdminKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                config:
+                  type: object
+                metadata:
+                  type: object
+      responses:
+        "200":
+          description: Reconciliation source updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+        "400": *a3
+        "401": *a1
+        "404": *a4
+    delete:
+      summary: Delete recon source
+      description: Deletes a reconciliation source by ID.
+      x-platform:
+        kind: resource
+        entity: ReconSource
+        affectsLedger: false
+      operationId: deleteReconSource
+      tags:
+        - Reconciliation
+      security:
+        - PlatformAdminKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+      responses:
+        "200":
+          description: Reconciliation source deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - deleted
+                  - id
+                properties:
+                  deleted:
+                    type: boolean
+                  id:
+                    type: string
+        "401": *a1
+        "404": *a4
+  /api/internal/recon/sources/{id}/imports:
+    get:
+      summary: List imports for source
+      description: Returns a paginated list of imports for a reconciliation source.
+      x-platform:
+        kind: resource
+        entity: ReconImport
+        affectsLedger: false
+      operationId: listReconImports
+      tags:
+        - Reconciliation
+      security:
+        - PlatformAdminKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+      responses:
+        "200":
+          description: Paginated list of imports.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - pagination
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                  pagination:
+                    $ref: "#/components/schemas/PaginationMeta"
+        "401": *a1
+        "403": *a2
+        "404": *a4
+    post:
+      summary: Create import
+      description: Creates a new import for a reconciliation source.
+      x-platform:
+        kind: resource
+        entity: ReconImport
+        affectsLedger: false
+      operationId: createReconImport
+      tags:
+        - Reconciliation
+      security:
+        - PlatformAdminKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - file_url
+              properties:
+                file_url:
+                  type: string
+                  format: uri
+                format:
+                  type: string
+                metadata:
+                  type: object
+      responses:
+        "201":
+          description: Import created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+        "400": *a3
+        "401": *a1
+        "404": *a4
+  /api/internal/recon/sources/{id}/imports/{importId}:
+    get:
+      summary: Get import
+      description: Returns a single import by ID.
+      x-platform:
+        kind: resource
+        entity: ReconImport
+        affectsLedger: false
+      operationId: getReconImport
+      tags:
+        - Reconciliation
+      security:
+        - PlatformAdminKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+        - &a5
+          in: path
+          name: importId
+          required: true
+          description: Import ID.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Import details.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+        "401": *a1
+        "404": *a4
+    patch:
+      summary: Update import
+      description: Updates an import record.
+      x-platform:
+        kind: resource
+        entity: ReconImport
+        affectsLedger: false
+      operationId: updateReconImport
+      tags:
+        - Reconciliation
+      security:
+        - PlatformAdminKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+        - *a5
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                metadata:
+                  type: object
+      responses:
+        "200":
+          description: Import updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+        "400": *a3
+        "401": *a1
+        "404": *a4
+  /api/internal/recon/periods:
+    get:
+      summary: List reconciliation periods
+      description: Returns a paginated list of reconciliation periods.
+      x-platform:
+        kind: resource
+        entity: ReconPeriod
+        affectsLedger: false
+      operationId: listReconPeriods
+      tags:
+        - Reconciliation
+      security:
+        - PlatformAdminKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+      responses:
+        "200":
+          description: Paginated list of reconciliation periods.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - pagination
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                  pagination:
+                    $ref: "#/components/schemas/PaginationMeta"
+        "401": *a1
+        "403": *a2
+    post:
+      summary: Create recon period
+      description: Creates a new reconciliation period.
+      x-platform:
+        kind: resource
+        entity: ReconPeriod
+        affectsLedger: false
+      operationId: createReconPeriod
+      tags:
+        - Reconciliation
+      security:
+        - PlatformAdminKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - start_date
+                - end_date
+              properties:
+                start_date:
+                  type: string
+                  format: date
+                end_date:
+                  type: string
+                  format: date
+                metadata:
+                  type: object
+      responses:
+        "201":
+          description: Reconciliation period created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+        "400": *a3
+        "401": *a1
+        "403": *a2
+  /api/internal/recon/periods/{id}:
+    get:
+      summary: Get recon period
+      description: Returns a single reconciliation period by ID.
+      x-platform:
+        kind: resource
+        entity: ReconPeriod
+        affectsLedger: false
+      operationId: getReconPeriod
+      tags:
+        - Reconciliation
+      security:
+        - PlatformAdminKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+      responses:
+        "200":
+          description: Reconciliation period details.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+        "401": *a1
+        "404": *a4
+    patch:
+      summary: Update recon period
+      description: Updates a reconciliation period.
+      x-platform:
+        kind: resource
+        entity: ReconPeriod
+        affectsLedger: false
+      operationId: updateReconPeriod
+      tags:
+        - Reconciliation
+      security:
+        - PlatformAdminKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                metadata:
+                  type: object
+      responses:
+        "200":
+          description: Reconciliation period updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+        "400": *a3
+        "401": *a1
+        "404": *a4
+  /api/internal/recon/periods/{id}/close:
+    post:
+      summary: Close recon period
+      description: Closes a reconciliation period, preventing further modifications.
+      x-platform:
+        kind: transition
+        entity: ReconPeriod
+        affectsLedger: false
+        stateChanges:
+          - open -> closed
+      operationId: closeReconPeriod
+      tags:
+        - Reconciliation
+      security:
+        - PlatformAdminKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+      responses:
+        "200":
+          description: Reconciliation period closed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+        "401": *a1
+        "404": *a4
+        "409":
+          description: Period is already closed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/internal/recon/periods/{id}/diffs:
+    get:
+      summary: List diffs in period
+      description: Returns a paginated list of diffs for a reconciliation period.
+      x-platform:
+        kind: resource
+        entity: ReconDiff
+        affectsLedger: false
+      operationId: listReconDiffs
+      tags:
+        - Reconciliation
+      security:
+        - PlatformAdminKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+      responses:
+        "200":
+          description: Paginated list of diffs.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - pagination
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                  pagination:
+                    $ref: "#/components/schemas/PaginationMeta"
+        "401": *a1
+        "403": *a2
+        "404": *a4
+    post:
+      summary: Create diff
+      description: Creates a new diff entry in a reconciliation period.
+      x-platform:
+        kind: resource
+        entity: ReconDiff
+        affectsLedger: false
+      operationId: createReconDiff
+      tags:
+        - Reconciliation
+      security:
+        - PlatformAdminKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - type
+                - amount
+              properties:
+                type:
+                  type: string
+                amount:
+                  type: integer
+                reference_id:
+                  type: string
+                metadata:
+                  type: object
+      responses:
+        "201":
+          description: Diff created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+        "400": *a3
+        "401": *a1
+        "404": *a4
+  /api/internal/recon/periods/{id}/diffs/{diffId}:
+    get:
+      summary: Get diff
+      description: Returns a single diff by ID.
+      x-platform:
+        kind: resource
+        entity: ReconDiff
+        affectsLedger: false
+      operationId: getReconDiff
+      tags:
+        - Reconciliation
+      security:
+        - PlatformAdminKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+        - &a6
+          in: path
+          name: diffId
+          required: true
+          description: Diff ID.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Diff details.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+        "401": *a1
+        "404": *a4
+    patch:
+      summary: Update diff
+      description: Updates a diff entry.
+      x-platform:
+        kind: resource
+        entity: ReconDiff
+        affectsLedger: false
+      operationId: updateReconDiff
+      tags:
+        - Reconciliation
+      security:
+        - PlatformAdminKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+        - *a6
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                metadata:
+                  type: object
+      responses:
+        "200":
+          description: Diff updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+        "400": *a3
+        "401": *a1
+        "404": *a4
+  /api/internal/recon/periods/{id}/diffs/{diffId}/explanations:
+    get:
+      summary: List explanations for diff
+      description: Returns a paginated list of explanations for a diff.
+      x-platform:
+        kind: resource
+        entity: ReconExplanation
+        affectsLedger: false
+      operationId: listReconExplanations
+      tags:
+        - Reconciliation
+      security:
+        - PlatformAdminKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+        - *a6
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+      responses:
+        "200":
+          description: Paginated list of explanations.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - pagination
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                  pagination:
+                    $ref: "#/components/schemas/PaginationMeta"
+        "401": *a1
+        "403": *a2
+        "404": *a4
+    post:
+      summary: Create explanation
+      description: Creates an explanation for a reconciliation diff.
+      x-platform:
+        kind: resource
+        entity: ReconExplanation
+        affectsLedger: false
+      operationId: createReconExplanation
+      tags:
+        - Reconciliation
+      security:
+        - PlatformAdminKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+        - *a6
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - reason
+              properties:
+                reason:
+                  type: string
+                category:
+                  type: string
+                metadata:
+                  type: object
+      responses:
+        "201":
+          description: Explanation created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+        "400": *a3
+        "401": *a1
+        "404": *a4
+components:
+  securitySchemes:
+    MerchantKeyAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API Key
+      description: |
+        Bearer API key for merchant-scoped operations. Pass as `Authorization: Bearer {{merchantApiKey}}`.
+    PlatformAdminKeyAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API Key
+      description: |
+        Bearer API key for platform admin operations. Pass as `Authorization: Bearer {{platformAdminKey}}`.
+  schemas:
+    ErrorResponse:
+      description: Standard error response envelope returned for 4xx/5xx responses.
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              description: Machine-readable error code.
+            message:
+              type: string
+              description: Human-readable error description.
+    PaginationMeta:
+      description: Pagination metadata included in list responses.
+      type: object
+      required:
+        - page
+        - pageSize
+        - total
+        - hasMore
+      properties:
+        page:
+          type: integer
+          description: Current page number (1-indexed).
+        pageSize:
+          type: integer
+          description: Number of results per page.
+        total:
+          type: integer
+          description: Total number of matching records.
+        hasMore:
+          type: boolean
+          description: Whether additional pages exist.
+    CreditNote:
+      description: A credit note issued against an invoice.
+      type: object
+      properties:
+        id:
+          type: string
+        merchant_id:
+          type: string
+        invoice_id:
+          type: string
+        number:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum:
+            - issued
+            - void
+        reason:
+          type: string
+          nullable: true
+        amount:
+          type: integer
+        currency:
+          type: string
+        voided_at:
+          type: string
+          format: date-time
+          nullable: true
+        metadata:
+          type: object
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    CreditNoteLineItem:
+      description: A line item on a credit note.
+      type: object
+      properties:
+        id:
+          type: string
+        credit_note_id:
+          type: string
+        description:
+          type: string
+        quantity:
+          type: integer
+        unit_amount:
+          type: integer
+        amount:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+    Event:
+      description: A domain event representing a state change in the system.
+      type: object
+      properties:
+        id:
+          type: string
+        merchant_id:
+          type: string
+        type:
+          type: string
+          description: Event type (e.g. payment_intent.succeeded).
+        entity_type:
+          type: string
+          description: Type of entity that triggered the event.
+        entity_id:
+          type: string
+          description: ID of the entity that triggered the event.
+        payload:
+          type: object
+          description: Event payload with entity snapshot.
+        actor_type:
+          type: string
+          nullable: true
+        actor_id:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+    WebhookEndpoint:
+      description: A registered webhook endpoint for receiving event notifications.
+      type: object
+      properties:
+        id:
+          type: string
+        merchant_id:
+          type: string
+        url:
+          type: string
+          format: uri
+        is_active:
+          type: boolean
+        enabled_events:
+          type: array
+          items:
+            type: string
+        secret:
+          type: string
+          description: Only included on creation and rotate.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    WebhookDelivery:
+      description: A webhook delivery record with attempt history.
+      type: object
+      properties:
+        id:
+          type: string
+        merchant_id:
+          type: string
+        webhook_endpoint_id:
+          type: string
+        event_type:
+          type: string
+        payload:
+          type: object
+        status:
+          type: string
+          enum:
+            - PENDING
+            - DELIVERED
+            - FAILED
+        delivered_at:
+          type: string
+          format: date-time
+          nullable: true
+        next_attempt_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        attempts:
+          type: array
+          items:
+            type: object
+            properties:
+              attempt_number:
+                type: integer
+              response_status:
+                type: integer
+                nullable: true
+              created_at:
+                type: string
+                format: date-time
+              completed_at:
+                type: string
+                format: date-time
+                nullable: true
+    Adjustment:
+      description: A credit or debit adjustment.
+      type: object
+      properties:
+        id:
+          type: string
+        merchant_id:
+          type: string
+        type:
+          type: string
+          enum:
+            - credit
+            - debit
+        amount:
+          type: integer
+        currency:
+          type: string
+        description:
+          type: string
+          nullable: true
+        reference:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    Dispute:
+      description: A payment dispute.
+      type: object
+      properties:
+        id:
+          type: string
+        merchant_id:
+          type: string
+        payment_intent_id:
+          type: string
+        status:
+          type: string
+          enum:
+            - needs_response
+            - under_review
+            - won
+            - lost
+            - accepted
+            - expired
+        reason:
+          type: string
+          enum:
+            - fraudulent
+            - duplicate
+            - not_received
+            - product_unacceptable
+            - subscription_canceled
+            - other
+        amount:
+          type: integer
+        currency:
+          type: string
+        due_by:
+          type: string
+          format: date-time
+          nullable: true
+        closed_at:
+          type: string
+          format: date-time
+          nullable: true
+        metadata:
+          type: object
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    DisputeEvidence:
+      description: A piece of evidence for a dispute.
+      type: object
+      properties:
+        id:
+          type: string
+        dispute_id:
+          type: string
+        type:
+          type: string
+          enum:
+            - receipt
+            - shipping_proof
+            - customer_communication
+            - service_documentation
+            - policy_disclosure
+            - other
+        file_name:
+          type: string
+          nullable: true
+        file_size:
+          type: integer
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        submitted_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    Representment:
+      description: A dispute representment.
+      type: object
+      properties:
+        id:
+          type: string
+        dispute_id:
+          type: string
+        submitted_at:
+          type: string
+          format: date-time
+          nullable: true
+        outcome:
+          type: string
+          nullable: true
+        details:
+          type: object
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    OnboardingProfile:
+      description: Merchant onboarding / KYB profile.
+      type: object
+      properties:
+        id:
+          type: string
+        merchant_id:
+          type: string
+        business_name:
+          type: string
+          nullable: true
+        business_type:
+          type: string
+          nullable: true
+        tax_id:
+          type: string
+          nullable: true
+        website:
+          type: string
+          nullable: true
+        country:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum:
+            - started
+            - submitted
+            - under_review
+            - approved
+            - denied
+            - withdrawn
+        submitted_at:
+          type: string
+          format: date-time
+          nullable: true
+        metadata:
+          type: object
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    Owner:
+      description: Beneficial owner attached to an onboarding profile.
+      type: object
+      properties:
+        id:
+          type: string
+        onboarding_profile_id:
+          type: string
+        first_name:
+          type: string
+        last_name:
+          type: string
+        email:
+          type: string
+          nullable: true
+        ownership_percentage:
+          type: integer
+          nullable: true
+        title:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    OnboardingDocument:
+      description: Document record for KYB verification.
+      type: object
+      properties:
+        id:
+          type: string
+        onboarding_profile_id:
+          type: string
+        type:
+          type: string
+          enum:
+            - government_id
+            - proof_of_address
+            - bank_statement
+            - tax_return
+            - articles_of_incorporation
+            - other
+        status:
+          type: string
+          enum:
+            - pending
+            - verified
+            - rejected
+        file_name:
+          type: string
+        file_size:
+          type: integer
+          nullable: true
+        mime_type:
+          type: string
+          nullable: true
+        review_note:
+          type: string
+          nullable: true
+        reviewed_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    OnboardingBankAccount:
+      description: Bank account attached to an onboarding profile.
+      type: object
+      properties:
+        id:
+          type: string
+        onboarding_profile_id:
+          type: string
+        bank_name:
+          type: string
+        account_holder_name:
+          type: string
+        routing_number:
+          type: string
+        account_number_last4:
+          type: string
+        account_type:
+          type: string
+          enum:
+            - checking
+            - savings
+        is_verified:
+          type: boolean
+        is_primary:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    UnderwritingCase:
+      description: Underwriting review case linked to an onboarding profile.
+      type: object
+      properties:
+        id:
+          type: string
+        onboarding_profile_id:
+          type: string
+        assigned_to:
+          type: string
+          nullable: true
+        risk_score:
+          type: integer
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    UnderwritingDecision:
+      description: Decision recorded against an underwriting case.
+      type: object
+      properties:
+        id:
+          type: string
+        underwriting_case_id:
+          type: string
+        result:
+          type: string
+          enum:
+            - approved
+            - denied
+            - escalated
+            - pending_info
+        reason:
+          type: string
+          nullable: true
+        decided_by:
+          type: string
+          nullable: true
+        decided_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    Subscription:
+      description: A recurring billing subscription.
+      type: object
+      properties:
+        id:
+          type: string
+        merchant_id:
+          type: string
+        customer_id:
+          type: string
+        status:
+          type: string
+          enum:
+            - incomplete
+            - incomplete_expired
+            - trialing
+            - active
+            - past_due
+            - paused
+            - canceled
+            - unpaid
+        current_period_start:
+          type: string
+          format: date-time
+        current_period_end:
+          type: string
+          format: date-time
+        cancel_at_period_end:
+          type: boolean
+        canceled_at:
+          type: string
+          format: date-time
+          nullable: true
+        ended_at:
+          type: string
+          format: date-time
+          nullable: true
+        trial_start:
+          type: string
+          format: date-time
+          nullable: true
+        trial_end:
+          type: string
+          format: date-time
+          nullable: true
+        default_payment_method:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SubscriptionItem"
+    SubscriptionItem:
+      description: A line item on a subscription linking a price.
+      type: object
+      properties:
+        id:
+          type: string
+        subscription_id:
+          type: string
+        price_id:
+          type: string
+        quantity:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    Invoice:
+      description: An invoice representing an amount owed by a customer.
+      type: object
+      properties:
+        id:
+          type: string
+        merchant_id:
+          type: string
+        customer_id:
+          type: string
+        subscription_id:
+          type: string
+          nullable: true
+        number:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum:
+            - draft
+            - open
+            - paid
+            - void
+            - uncollectible
+            - past_due
+        currency:
+          type: string
+        subtotal:
+          type: integer
+        tax:
+          type: integer
+        total:
+          type: integer
+        amount_paid:
+          type: integer
+        amount_due:
+          type: integer
+        due_date:
+          type: string
+          format: date-time
+          nullable: true
+        paid_at:
+          type: string
+          format: date-time
+          nullable: true
+        voided_at:
+          type: string
+          format: date-time
+          nullable: true
+        period_start:
+          type: string
+          format: date-time
+          nullable: true
+        period_end:
+          type: string
+          format: date-time
+          nullable: true
+        metadata:
+          type: object
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InvoiceItem"
+    InvoiceItem:
+      description: A line item on an invoice.
+      type: object
+      properties:
+        id:
+          type: string
+        invoice_id:
+          type: string
+        description:
+          type: string
+        quantity:
+          type: integer
+        unit_amount:
+          type: integer
+        amount:
+          type: integer
+        currency:
+          type: string
+        price_id:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    InvoiceAttempt:
+      description: A payment attempt against an invoice.
+      type: object
+      properties:
+        id:
+          type: string
+        invoice_id:
+          type: string
+        attempt_number:
+          type: integer
+        amount:
+          type: integer
+        status:
+          type: string
+          enum:
+            - succeeded
+            - failed
+        error_message:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+    Report:
+      description: An on-demand report generated for a merchant.
+      type: object
+      properties:
+        id:
+          type: string
+        merchant_id:
+          type: string
+        type:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum:
+            - queued
+            - processing
+            - completed
+            - failed
+        parameters:
+          type: object
+          nullable: true
+        result_url:
+          type: string
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    Export:
+      description: A data export requested by a merchant.
+      type: object
+      properties:
+        id:
+          type: string
+        merchant_id:
+          type: string
+        type:
+          type: string
+        format:
+          type: string
+          enum:
+            - csv
+            - json
+            - pdf
+        status:
+          type: string
+          enum:
+            - queued
+            - processing
+            - completed
+            - failed
+        parameters:
+          type: object
+          nullable: true
+        result_url:
+          type: string
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+        row_count:
+          type: integer
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ExportSchedule:
+      description: A recurring export schedule configured by a merchant.
+      type: object
+      properties:
+        id:
+          type: string
+        merchant_id:
+          type: string
+        type:
+          type: string
+        format:
+          type: string
+          enum:
+            - csv
+            - json
+            - pdf
+        frequency:
+          type: string
+          enum:
+            - daily
+            - weekly
+            - monthly
+        parameters:
+          type: object
+          nullable: true
+        is_active:
+          type: boolean
+        last_run_at:
+          type: string
+          format: date-time
+          nullable: true
+        next_run_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    Job:
+      description: A platform background job.
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        status:
+          type: string
+          enum:
+            - queued
+            - running
+            - completed
+            - failed
+            - canceled
+        payload:
+          type: object
+          nullable: true
+        result:
+          type: object
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+        attempts:
+          type: integer
+        max_attempts:
+          type: integer
+        scheduled_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    DeadLetter:
+      description: A dead letter entry for failed processing.
+      type: object
+      properties:
+        id:
+          type: string
+        source_type:
+          type: string
+        source_id:
+          type: string
+          nullable: true
+        payload:
+          type: object
+        error_message:
+          type: string
+        status:
+          type: string
+          enum:
+            - pending
+            - reprocessed
+            - discarded
+        reprocessed_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+  parameters:
+    IdempotencyKey:
+      in: header
+      name: Idempotency-Key
+      required: true
+      description: |
+        Client-generated unique key for safe request retries. Identical key + payload replays the original response.
+      schema:
+        type: string
+        example: idem-key-a1b2c3d4
+    PageParam:
+      in: query
+      name: page
+      description: Page number (1-indexed).
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSizeParam:
+      in: query
+      name: pageSize
+      description: Number of results per page (max 100).
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 10
+    PathId:
+      in: path
+      name: id
+      required: true
+      description: Resource identifier.
+      schema:
+        type: string
+  headers:
+    X-Signature:
+      description: HMAC SHA-256 signature computed over `timestamp.payload`.
+      schema:
+        type: string
+    X-Timestamp:
+      description: Unix timestamp (seconds) at webhook delivery time.
+      schema:
+        type: string
+    X-Event-Type:
+      description: Webhook event type string (e.g. `payment_intent.succeeded`).
+      schema:
+        type: string
+    X-RateLimit-Limit:
+      description: Maximum requests allowed in the current fixed window.
+      schema:
+        type: string
+    X-RateLimit-Remaining:
+      description: Requests remaining in the current fixed window.
+      schema:
+        type: string
+    X-RateLimit-Reset:
+      description: Unix timestamp when the current rate-limit window resets.
+      schema:
+        type: string
