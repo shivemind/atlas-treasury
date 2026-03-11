@@ -39,7 +39,7 @@ jobs:
         run: npx yaml-lint ${{ env.SPEC_PATH }}
 
       - name: Spectral OpenAPI lint
-        run: npx @stoplight/spectral-cli lint ${{ env.SPEC_PATH }} --ruleset .spectral.yaml --fail-severity warn
+        run: npx @stoplight/spectral-cli lint ${{ env.SPEC_PATH }} --ruleset .spectral.yaml --fail-severity error
 
       - name: Custom schema validation
         run: node scripts/openapi-validate.mjs
