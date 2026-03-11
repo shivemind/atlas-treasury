@@ -1,0 +1,20 @@
+extends:
+  - spectral:oas
+
+rules:
+  operation-operationId: error
+  operation-tags: error
+  operation-description: warn
+  info-contact: warn
+  info-description: error
+  oas3-api-servers: error
+  no-eval-in-markdown: error
+  no-script-tags-in-markdown: error
+  typed-enum: warn
+  oas3-valid-media-example: warn
+  oas3-valid-schema-example: warn
+  path-params: error
+  operation-operationId-unique: error
+  operation-parameters: error
+  path-declarations-must-exist: error
+  path-not-include-query: error

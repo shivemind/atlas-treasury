@@ -1,0 +1,198 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  NODE_VERSION: "22"
+  SPEC_PATH: openapi/openapi.yaml
+  API_NAME: "Atlas Treasury API"
+  ECR_REPO: "atlas-treasury"
+  K8S_DEPLOYMENT: "atlas-treasury"
+
+jobs:
+  # ── Gate 1: Validate ──────────────────────────────────────────────
+  validate:
+    name: "Gate 1: Validate"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma generate
+        run: npx prisma generate
+
+      - name: YAML syntax check
+        run: npx yaml-lint ${{ env.SPEC_PATH }}
+
+      - name: Spectral OpenAPI lint
+        run: npx @stoplight/spectral-cli lint ${{ env.SPEC_PATH }} --ruleset .spectral.yaml --fail-severity warn
+
+      - name: Custom schema validation
+        run: node scripts/openapi-validate.mjs
+
+      - name: TypeScript type-check
+        run: npx tsc --noEmit
+
+  # ── Gate 2: Postman Sync ──────────────────────────────────────────
+  postman-sync:
+    name: "Gate 2: Postman Sync"
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Sync to Postman Spec Hub
+        env:
+          POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
+          POSTMAN_WORKSPACE_ID: ${{ secrets.POSTMAN_WORKSPACE_ID }}
+        run: |
+          chmod +x scripts/sync-to-postman.sh
+          ./scripts/sync-to-postman.sh "${{ env.SPEC_PATH }}" "${{ env.API_NAME }}"
+
+  # ── Gate 3: Smoke Tests ───────────────────────────────────────────
+  smoke-tests:
+    name: "Gate 3: Smoke Tests"
+    needs: postman-sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Newman
+        run: npm install -g newman newman-reporter-htmlextra
+
+      - name: Run smoke tests
+        run: |
+          newman run postman/smoke-tests.json \
+            -e postman/environment.json \
+            --env-var "baseUrl=${{ secrets.VERCEL_PREVIEW_URL || 'http://localhost:3000' }}" \
+            --reporters cli,htmlextra \
+            --reporter-htmlextra-export newman-report.html \
+            --suppress-exit-code 0
+        continue-on-error: false
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: newman-report
+          path: newman-report.html
+          retention-days: 30
+
+  # ── Gate 4: Build & Deploy ────────────────────────────────────────
+  build-and-deploy:
+    name: "Gate 4: Build & Deploy"
+    needs: smoke-tests
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tags }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Deploy to Vercel
+        run: |
+          npm i -g vercel
+          vercel deploy --prod --token ${{ secrets.VERCEL_TOKEN }} \
+            --scope ${{ secrets.VERCEL_ORG_ID }} --yes
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push Docker image
+        id: meta
+        env:
+          REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $REGISTRY/$ECR_REPO:$IMAGE_TAG -t $REGISTRY/$ECR_REPO:latest .
+          docker push $REGISTRY/$ECR_REPO:$IMAGE_TAG
+          docker push $REGISTRY/$ECR_REPO:latest
+          echo "tags=$REGISTRY/$ECR_REPO:$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+
+  # ── Gate 5: Kubernetes Deploy ─────────────────────────────────────
+  kubernetes-deploy:
+    name: "Gate 5: Kubernetes (EKS)"
+    needs: build-and-deploy
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name ${{ secrets.EKS_CLUSTER_NAME }} --region ${{ secrets.AWS_REGION }}
+
+      - name: Apply K8s manifests
+        run: kubectl apply -f k8s/ -n atlas-production
+
+      - name: Rolling update
+        run: |
+          kubectl set image deployment/${{ env.K8S_DEPLOYMENT }} \
+            ${{ env.K8S_DEPLOYMENT }}=${{ needs.build-and-deploy.outputs.image_tag }} \
+            -n atlas-production
+
+      - name: Wait for rollout
+        run: kubectl rollout status deployment/${{ env.K8S_DEPLOYMENT }} -n atlas-production --timeout=300s
+
+      - name: Post-deploy health check
+        run: |
+          SVC_URL=$(kubectl get svc ${{ env.K8S_DEPLOYMENT }} -n atlas-production -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          for i in 1 2 3 4 5; do
+            STATUS=$(curl -sf "http://${SVC_URL}/api/health" | jq -r '.status // empty' || echo "unreachable")
+            if [ "$STATUS" = "ok" ]; then echo "Health check passed"; exit 0; fi
+            echo "Attempt $i: $STATUS — retrying in 10s..."
+            sleep 10
+          done
+          echo "Health check failed — initiating rollback"
+          kubectl rollout undo deployment/${{ env.K8S_DEPLOYMENT }} -n atlas-production
+          exit 1

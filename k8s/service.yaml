@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: atlas-treasury
+  namespace: atlas-production
+  labels:
+    app: atlas-treasury
+spec:
+  type: ClusterIP
+  selector:
+    app: atlas-treasury
+  ports:
+    - port: 80
+      targetPort: 3000
+      protocol: TCP
