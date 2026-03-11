@@ -55,6 +55,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
       - name: Install tools
         run: |
           sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
@@ -70,6 +74,13 @@ jobs:
         run: |
           chmod +x scripts/sync-to-postman.sh
           ./scripts/sync-to-postman.sh "${{ env.SPEC_PATH }}" "${{ env.API_NAME }}"
+
+      - name: API governance lint
+        run: |
+          npx @stoplight/spectral-cli lint ${{ env.SPEC_PATH }} \
+            --ruleset .spectral.yaml \
+            --format stylish \
+            --fail-severity error
 
   # ── Gate 3: Smoke Tests ───────────────────────────────────────────
   smoke-tests:
@@ -90,7 +101,7 @@ jobs:
         run: |
           newman run postman/smoke-tests.json \
             -e postman/environment.json \
-            --env-var "baseUrl=${{ secrets.VERCEL_PREVIEW_URL || 'http://localhost:3000' }}" \
+            --env-var "baseUrl=${{ secrets.VERCEL_PREVIEW_URL }}" \
             --reporters cli,htmlextra \
             --reporter-htmlextra-export newman-report.html \
             --suppress-exit-code 0
@@ -195,3 +206,35 @@ jobs:
         run: |
           kubectl get pods -n atlas-production -l app=${{ env.K8S_DEPLOYMENT }} -o wide
           echo "Kubernetes deployment updated successfully"
+
+  # ── Gate 6: Post-Deploy Contract Tests ─────────────────────────
+  contract-tests:
+    name: "Gate 6: Contract Tests"
+    needs: build-and-deploy
+    if: always() && needs.build-and-deploy.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Newman
+        run: npm install -g newman newman-reporter-htmlextra
+
+      - name: Run full API collection
+        env:
+          POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
+          POSTMAN_WORKSPACE_ID: ${{ secrets.POSTMAN_WORKSPACE_ID }}
+        run: |
+          newman run postman/smoke-tests.json \
+            -e postman/environment.json \
+            --env-var "baseUrl=${{ secrets.VERCEL_PREVIEW_URL }}" \
+            --reporters cli,htmlextra \
+            --reporter-htmlextra-export contract-test-report.html \
+            --timeout-request 15000
+
+      - name: Upload contract test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-test-report
+          path: contract-test-report.html
+          retention-days: 30
