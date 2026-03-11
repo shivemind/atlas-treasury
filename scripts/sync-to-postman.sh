@@ -80,7 +80,8 @@ echo ""
 
 echo "==> 2a: Generate/update collection from spec"
 
-SPEC_JSON=$(yq -o=json "$SPEC_FILE")
+SPEC_JSON_FILE=$(mktemp)
+yq -o=json "$SPEC_FILE" > "$SPEC_JSON_FILE"
 
 EXISTING_COLLS=$(postman_api GET "/collections?workspace=${POSTMAN_WORKSPACE_ID}")
 EXISTING_COLL_ID=$(echo "$EXISTING_COLLS" | jq -r --arg name "$API_NAME" \
@@ -92,12 +93,14 @@ if [ -n "$EXISTING_COLL_ID" ]; then
 fi
 
 echo "    Importing spec as new collection..."
-IMPORT_BODY=$(jq -n --argjson input "$SPEC_JSON" '{type: "json", input: $input}')
+IMPORT_BODY_FILE=$(mktemp)
+jq -n --slurpfile input "$SPEC_JSON_FILE" '{type: "json", input: $input[0]}' > "$IMPORT_BODY_FILE"
 COLL_RESP=$(curl -s -X POST "${POSTMAN_API_BASE}/import/openapi" \
   -H "X-Api-Key: ${POSTMAN_API_KEY}" \
   -H "X-Workspace-Id: ${POSTMAN_WORKSPACE_ID}" \
   -H "Content-Type: application/json" \
-  -d "$IMPORT_BODY")
+  -d @"$IMPORT_BODY_FILE")
+rm -f "$SPEC_JSON_FILE" "$IMPORT_BODY_FILE"
 COLLECTION_UID=$(echo "$COLL_RESP" | jq -r '.collections[0].uid // empty')
 
 if [ -z "$COLLECTION_UID" ]; then
