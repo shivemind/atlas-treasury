@@ -178,9 +178,11 @@ jobs:
         run: kubectl apply -f k8s/ -n atlas-production
 
       - name: Rolling update
+        env:
+          REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
         run: |
           kubectl set image deployment/${{ env.K8S_DEPLOYMENT }} \
-            ${{ env.K8S_DEPLOYMENT }}=${{ needs.build-and-deploy.outputs.image_tag }} \
+            ${{ env.K8S_DEPLOYMENT }}=$REGISTRY/${{ env.ECR_REPO }}:${{ github.sha }} \
             -n atlas-production
 
       - name: Wait for rollout
