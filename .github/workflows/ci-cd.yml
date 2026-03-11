@@ -13,7 +13,7 @@ env:
   NODE_VERSION: "22"
   SPEC_PATH: openapi/openapi.yaml
   API_NAME: "Atlas Treasury API"
-  ECR_REPO: "atlas-treasury"
+  ECR_REPO: "empire/atlas-treasury"
   K8S_DEPLOYMENT: "atlas-treasury"
 
 jobs:
@@ -134,7 +134,6 @@ jobs:
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
-        continue-on-error: true
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -143,11 +142,9 @@ jobs:
       - name: Login to ECR
         id: ecr-login
         uses: aws-actions/amazon-ecr-login@v2
-        continue-on-error: true
 
       - name: Build and push Docker image
         id: meta
-        continue-on-error: true
         env:
           REGISTRY: ${{ steps.ecr-login.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
