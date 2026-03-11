@@ -52,22 +52,28 @@ EXISTING_SPECS=$(postman_api GET "/specs?workspaceId=${POSTMAN_WORKSPACE_ID}")
 SPEC_ID=$(echo "$EXISTING_SPECS" | jq -r --arg name "$API_NAME" \
   '[.specs[] | select(.name == $name)] | first // empty | .id // empty')
 
-SPEC_CONTENT=$(cat "$SPEC_FILE")
+SPEC_CONTENT_FILE=$(mktemp)
+cat "$SPEC_FILE" > "$SPEC_CONTENT_FILE"
 
 if [ -n "$SPEC_ID" ]; then
   echo "    Found existing spec: ${SPEC_ID}"
-  postman_api PATCH "/specs/${SPEC_ID}" \
-    -d "$(jq -n --arg name "$API_NAME" --arg content "$SPEC_CONTENT" \
-      '{name: $name, files: [{path: "openapi.yaml", content: $content}]}')" > /dev/null
+  PATCH_BODY_FILE=$(mktemp)
+  jq -n --arg name "$API_NAME" --rawfile content "$SPEC_CONTENT_FILE" \
+    '{name: $name, files: [{path: "openapi.yaml", content: $content}]}' > "$PATCH_BODY_FILE"
+  postman_api PATCH "/specs/${SPEC_ID}" -d @"$PATCH_BODY_FILE" > /dev/null
+  rm -f "$PATCH_BODY_FILE"
   echo "    Updated."
 else
   echo "    Creating new spec..."
-  CREATE_RESP=$(postman_api POST "/specs?workspaceId=${POSTMAN_WORKSPACE_ID}" \
-    -d "$(jq -n --arg name "$API_NAME" --arg content "$SPEC_CONTENT" \
-      '{name: $name, type: "OPENAPI:3.0", files: [{path: "openapi.yaml", content: $content}]}')")
+  CREATE_BODY_FILE=$(mktemp)
+  jq -n --arg name "$API_NAME" --rawfile content "$SPEC_CONTENT_FILE" \
+    '{name: $name, type: "OPENAPI:3.0", files: [{path: "openapi.yaml", content: $content}]}' > "$CREATE_BODY_FILE"
+  CREATE_RESP=$(postman_api POST "/specs?workspaceId=${POSTMAN_WORKSPACE_ID}" -d @"$CREATE_BODY_FILE")
+  rm -f "$CREATE_BODY_FILE"
   SPEC_ID=$(echo "$CREATE_RESP" | jq -r '.id')
   echo "    Created spec: ${SPEC_ID}"
 fi
+rm -f "$SPEC_CONTENT_FILE"
 
 echo "    Spec is now in Spec Hub (id: ${SPEC_ID})"
 
@@ -141,23 +147,31 @@ else
   echo "    Created environment: ${ENV_ID}"
 fi
 
-echo "==> 2c: Create/update monitor"
+echo "==> 2c: Create/update monitor (best-effort)"
 
-EXISTING_MONITORS=$(postman_api GET "/monitors?workspace=${POSTMAN_WORKSPACE_ID}")
 MON_NAME="${API_NAME} - Health Monitor"
-EXISTING_MON_ID=$(echo "$EXISTING_MONITORS" | jq -r --arg name "$MON_NAME" \
-  '[.monitors[] | select(.name == $name)] | first // empty | .id // empty')
+MON_ID=""
 
-if [ -n "$EXISTING_MON_ID" ]; then
-  echo "    Monitor already exists: ${EXISTING_MON_ID}"
-elif [ "$COLLECTION_UID" != "unknown" ]; then
-  MON_RESP=$(postman_api POST "/monitors?workspace=${POSTMAN_WORKSPACE_ID}" \
-    -d "$(jq -n --arg name "$MON_NAME" --arg coll "$COLLECTION_UID" --arg env "$ENV_ID" \
-      '{monitor: {name: $name, collection: $coll, environment: $env, schedule: {cron: "0 */6 * * *", timezone: "America/New_York"}}}')")
-  MON_ID=$(echo "$MON_RESP" | jq -r '.monitor.id // empty')
-  echo "    Created monitor: ${MON_ID}"
+if EXISTING_MONITORS=$(postman_api GET "/monitors?workspace=${POSTMAN_WORKSPACE_ID}" 2>/dev/null); then
+  EXISTING_MON_ID=$(echo "$EXISTING_MONITORS" | jq -r --arg name "$MON_NAME" \
+    '[.monitors[] | select(.name == $name)] | first // empty | .id // empty')
+
+  if [ -n "$EXISTING_MON_ID" ]; then
+    echo "    Monitor already exists: ${EXISTING_MON_ID}"
+    MON_ID="$EXISTING_MON_ID"
+  elif [ "$COLLECTION_UID" != "unknown" ]; then
+    MON_RESP=$(postman_api POST "/monitors?workspace=${POSTMAN_WORKSPACE_ID}" \
+      -d "$(jq -n --arg name "$MON_NAME" --arg coll "$COLLECTION_UID" --arg env "$ENV_ID" \
+        '{monitor: {name: $name, collection: $coll, environment: $env, schedule: {cron: "0 */6 * * *", timezone: "America/New_York"}}}')" 2>/dev/null) || true
+    MON_ID=$(echo "$MON_RESP" | jq -r '.monitor.id // empty' 2>/dev/null || echo "")
+    if [ -n "$MON_ID" ]; then
+      echo "    Created monitor: ${MON_ID}"
+    else
+      echo "    Monitor creation skipped (plan may not support monitors)"
+    fi
+  fi
 else
-  echo "    Skipping monitor (no collection UID)."
+  echo "    Monitor API unavailable, skipping"
 fi
 
 echo ""
