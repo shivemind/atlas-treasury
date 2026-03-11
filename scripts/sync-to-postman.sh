@@ -8,6 +8,10 @@ API_NAME="${2:?Usage: sync-to-postman.sh <spec-path> <api-name>}"
 : "${POSTMAN_API_KEY:?POSTMAN_API_KEY is required}"
 : "${POSTMAN_WORKSPACE_ID:?POSTMAN_WORKSPACE_ID is required}"
 
+PRODUCTION_URL="${PRODUCTION_URL:-}"
+GITHUB_REPO_URL="${GITHUB_REPO_URL:-}"
+GITHUB_SHA="${GITHUB_SHA:-unknown}"
+
 if [ ! -f "$SPEC_FILE" ]; then
   echo "ERROR: Spec file not found: $SPEC_FILE" >&2
   exit 1
@@ -42,7 +46,7 @@ postman_api() {
 }
 
 # ===========================================================================
-#  PHASE 1 — Git → Spec Hub
+#  PHASE 1 — Git → Spec Hub (v12 Spec Hub)
 # ===========================================================================
 echo ""
 echo "######  PHASE 1: Git → Spec Hub  ######"
@@ -78,10 +82,10 @@ rm -f "$SPEC_CONTENT_FILE"
 echo "    Spec is now in Spec Hub (id: ${SPEC_ID})"
 
 # ===========================================================================
-#  PHASE 2 — Spec Hub → Collection + Environment + Monitor
+#  PHASE 2 — Spec Hub → Collection + Environments + Monitor
 # ===========================================================================
 echo ""
-echo "######  PHASE 2: Spec Hub → Collection + Environment + Monitor  ######"
+echo "######  PHASE 2: Spec Hub → Collection + Environments + Monitor  ######"
 echo ""
 
 echo "==> 2a: Generate/update collection from spec"
@@ -115,36 +119,67 @@ if [ -z "$COLLECTION_UID" ]; then
 fi
 echo "    Collection: ${COLLECTION_UID}"
 
-echo "==> 2b: Create/update environment"
+# 2a-ii: Update collection description with repo link and commit SHA
+if [ "$COLLECTION_UID" != "unknown" ] && [ -n "$GITHUB_REPO_URL" ]; then
+  echo "    Linking GitHub repo in collection description..."
+  COLL_DETAIL=$(postman_api GET "/collections/${COLLECTION_UID}")
+  COLL_DESC="Source: ${GITHUB_REPO_URL} | Commit: ${GITHUB_SHA} | Auto-synced from OpenAPI spec via CI/CD"
+
+  DESC_BODY_FILE=$(mktemp)
+  echo "$COLL_DETAIL" | jq --arg desc "$COLL_DESC" \
+    '.collection.info.description = $desc' > "$DESC_BODY_FILE"
+  postman_api PUT "/collections/${COLLECTION_UID}" -d @"$DESC_BODY_FILE" > /dev/null 2>&1 || echo "    (description update skipped)"
+  rm -f "$DESC_BODY_FILE"
+fi
+
+echo "==> 2b: Create/update environments (Dev + Production)"
 
 BASE_URL=$(yq -r '.servers[0].url // "http://localhost:3000"' "$SPEC_FILE")
 SPEC_VERSION=$(yq -r '.info.version // "0.1.0"' "$SPEC_FILE")
 
 EXISTING_ENVS=$(postman_api GET "/environments?workspace=${POSTMAN_WORKSPACE_ID}")
-ENV_NAME="${API_NAME} - Dev"
-EXISTING_ENV_ID=$(echo "$EXISTING_ENVS" | jq -r --arg name "$ENV_NAME" \
-  '[.environments[] | select(.name == $name)] | first // empty | .uid // empty')
 
-ENV_VALUES=$(jq -n \
-  --arg baseUrl "$BASE_URL" \
-  --arg version "$SPEC_VERSION" \
-  --arg apiKey "test-api-key" \
-  '[{key: "baseUrl", value: $baseUrl, enabled: true},
-    {key: "apiVersion", value: $version, enabled: true},
-    {key: "apiKey", value: $apiKey, enabled: true, type: "secret"}]')
+create_or_update_env() {
+  local env_name="$1" env_base_url="$2"
+  local existing_env_id
+  existing_env_id=$(echo "$EXISTING_ENVS" | jq -r --arg name "$env_name" \
+    '[.environments[] | select(.name == $name)] | first // empty | .uid // empty')
 
-if [ -n "$EXISTING_ENV_ID" ]; then
-  postman_api PUT "/environments/${EXISTING_ENV_ID}" \
-    -d "$(jq -n --arg name "$ENV_NAME" --argjson values "$ENV_VALUES" \
-      '{environment: {name: $name, values: $values}}')" > /dev/null
-  ENV_ID="$EXISTING_ENV_ID"
-  echo "    Updated environment: ${ENV_ID}"
-else
-  ENV_RESP=$(postman_api POST "/environments?workspace=${POSTMAN_WORKSPACE_ID}" \
-    -d "$(jq -n --arg name "$ENV_NAME" --argjson values "$ENV_VALUES" \
-      '{environment: {name: $name, values: $values}}')")
-  ENV_ID=$(echo "$ENV_RESP" | jq -r '.environment.id // empty')
-  echo "    Created environment: ${ENV_ID}"
+  local env_values
+  env_values=$(jq -n \
+    --arg baseUrl "$env_base_url" \
+    --arg version "$SPEC_VERSION" \
+    --arg apiKey "test-api-key" \
+    --arg repo "${GITHUB_REPO_URL:-n/a}" \
+    '[{key: "baseUrl", value: $baseUrl, enabled: true},
+      {key: "apiVersion", value: $version, enabled: true},
+      {key: "apiKey", value: $apiKey, enabled: true, type: "secret"},
+      {key: "githubRepo", value: $repo, enabled: true}]')
+
+  if [ -n "$existing_env_id" ]; then
+    postman_api PUT "/environments/${existing_env_id}" \
+      -d "$(jq -n --arg name "$env_name" --argjson values "$env_values" \
+        '{environment: {name: $name, values: $values}}')" > /dev/null
+    echo "    Updated environment: ${env_name} (${existing_env_id})"
+    echo "$existing_env_id"
+  else
+    local env_resp
+    env_resp=$(postman_api POST "/environments?workspace=${POSTMAN_WORKSPACE_ID}" \
+      -d "$(jq -n --arg name "$env_name" --argjson values "$env_values" \
+        '{environment: {name: $name, values: $values}}')")
+    local env_id
+    env_id=$(echo "$env_resp" | jq -r '.environment.id // empty')
+    echo "    Created environment: ${env_name} (${env_id})"
+    echo "$env_id"
+  fi
+}
+
+DEV_ENV_ID=$(create_or_update_env "${API_NAME} - Dev" "$BASE_URL" 2>&1 | tail -1)
+echo "    Dev env: ${DEV_ENV_ID}"
+
+if [ -n "$PRODUCTION_URL" ]; then
+  PROD_ENV_ID=$(create_or_update_env "${API_NAME} - Production" "$PRODUCTION_URL" 2>&1 | tail -1)
+  echo "    Production env: ${PROD_ENV_ID}"
 fi
 
 echo "==> 2c: Create/update monitor (best-effort)"
@@ -161,7 +196,7 @@ if EXISTING_MONITORS=$(postman_api GET "/monitors?workspace=${POSTMAN_WORKSPACE_
     MON_ID="$EXISTING_MON_ID"
   elif [ "$COLLECTION_UID" != "unknown" ]; then
     MON_RESP=$(postman_api POST "/monitors?workspace=${POSTMAN_WORKSPACE_ID}" \
-      -d "$(jq -n --arg name "$MON_NAME" --arg coll "$COLLECTION_UID" --arg env "$ENV_ID" \
+      -d "$(jq -n --arg name "$MON_NAME" --arg coll "$COLLECTION_UID" --arg env "$DEV_ENV_ID" \
         '{monitor: {name: $name, collection: $coll, environment: $env, schedule: {cron: "0 */6 * * *", timezone: "America/New_York"}}}')" 2>/dev/null) || true
     MON_ID=$(echo "$MON_RESP" | jq -r '.monitor.id // empty' 2>/dev/null || echo "")
     if [ -n "$MON_ID" ]; then
@@ -180,5 +215,9 @@ echo "  Sync complete for: ${API_NAME}"
 echo "---------------------------------------------"
 echo "  Spec Hub ID:     ${SPEC_ID}"
 echo "  Collection UID:  ${COLLECTION_UID}"
-echo "  Environment ID:  ${ENV_ID:-n/a}"
+echo "  Dev Env ID:      ${DEV_ENV_ID:-n/a}"
+echo "  Prod Env ID:     ${PROD_ENV_ID:-n/a}"
+echo "  Monitor ID:      ${MON_ID:-n/a}"
+echo "  GitHub Repo:     ${GITHUB_REPO_URL:-n/a}"
+echo "  Commit SHA:      ${GITHUB_SHA}"
 echo "============================================="

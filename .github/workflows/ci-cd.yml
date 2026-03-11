@@ -60,10 +60,13 @@ jobs:
           sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
 
-      - name: Sync to Postman Spec Hub
+      - name: Sync to Postman API Catalog
         env:
           POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
           POSTMAN_WORKSPACE_ID: ${{ secrets.POSTMAN_WORKSPACE_ID }}
+          PRODUCTION_URL: https://atlas-treasury.vercel.app
+          GITHUB_REPO_URL: https://github.com/${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
         run: |
           chmod +x scripts/sync-to-postman.sh
           ./scripts/sync-to-postman.sh "${{ env.SPEC_PATH }}" "${{ env.API_NAME }}"
