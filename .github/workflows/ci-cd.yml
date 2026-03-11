@@ -161,7 +161,7 @@ jobs:
   kubernetes-deploy:
     name: "Gate 5: Kubernetes (EKS)"
     needs: build-and-deploy
-    if: secrets.EKS_CLUSTER_NAME != ''
+    if: ${{ vars.EKS_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     environment: production
     steps:
