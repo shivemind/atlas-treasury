@@ -30,13 +30,22 @@ jobs:
             --postman-api-key ${{ secrets.POSTMAN_API_KEY }}
 
       - name: Trigger Monitor Run
+        continue-on-error: true
         run: |
-          curl -sf -X POST "https://api.getpostman.com/monitors/52400725-1f11e446-d03e-4fe0-b9d4-5781ce07a4d3/run" \
-            -H "x-api-key: ${{ secrets.POSTMAN_API_KEY }}"
+          MONITOR_UID=$(curl -sf "https://api.getpostman.com/monitors" \
+            -H "x-api-key: ${{ secrets.POSTMAN_API_KEY }}" \
+            | jq -r '.monitors[] | select(.name == "Atlas Treasury API - Health Monitor") | .uid' | head -1)
+          if [ -n "$MONITOR_UID" ]; then
+            echo "Triggering monitor $MONITOR_UID"
+            curl -sf -X POST "https://api.getpostman.com/monitors/$MONITOR_UID/run" \
+              -H "x-api-key: ${{ secrets.POSTMAN_API_KEY }}" || true
+          else
+            echo "Monitor not found, skipping"
+          fi
 
       - name: Summary
         if: always()
         run: |
           echo "### Postman Catalog Onboard - Atlas Treasury" >> $GITHUB_STEP_SUMMARY
           echo "- **Collection**: 52400725-b9618c11-0fa3-4162-9919-c870008008f5" >> $GITHUB_STEP_SUMMARY
-          echo "- **Monitor**: 52400725-1f11e446-d03e-4fe0-b9d4-5781ce07a4d3" >> $GITHUB_STEP_SUMMARY
+          echo "- **Workspace**: [602f27e3-2272-4ead-8760-9d3dbe5078f9](https://go.postman.co/workspace/602f27e3-2272-4ead-8760-9d3dbe5078f9)" >> $GITHUB_STEP_SUMMARY
