@@ -238,3 +238,38 @@ jobs:
           name: contract-test-report
           path: contract-test-report.html
           retention-days: 30
+
+  # ── Gate 7: Postman Collection Run ──────────────────────────────
+  postman-collection-run:
+    name: "Gate 7: Postman Collection Run"
+    needs: build-and-deploy
+    if: always() && needs.build-and-deploy.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Postman CLI
+        run: curl -o- "https://dl-cli.pstmn.io/install/linux64.sh" | sh
+
+      - name: Login to Postman
+        run: postman login --with-api-key ${{ secrets.POSTMAN_API_KEY }}
+
+      - name: Resolve Collection UID
+        id: resolve
+        run: |
+          COLL_UID=$(curl -sf "https://api.getpostman.com/collections?workspace=${{ secrets.POSTMAN_WORKSPACE_ID }}" \
+            -H "x-api-key: ${{ secrets.POSTMAN_API_KEY }}" \
+            | jq -r '.collections[] | select(.name | contains("Treasury API")) | .uid' | head -1)
+          echo "collection_uid=$COLL_UID" >> $GITHUB_OUTPUT
+          echo "Resolved collection: $COLL_UID"
+
+      - name: Run Collection
+        run: |
+          postman collection run ${{ steps.resolve.outputs.collection_uid }} \
+            -e 52400725-742997bb-d2c1-47e8-b543-dcc97e4b9480 \
+            --postman-api-key ${{ secrets.POSTMAN_API_KEY }}
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Postman Collection Run - Atlas Treasury API" >> $GITHUB_STEP_SUMMARY
+          echo "- **Collection**: ${{ steps.resolve.outputs.collection_uid }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment**: Production" >> $GITHUB_STEP_SUMMARY
