@@ -6,8 +6,7 @@ jobs:
   link-workspace:
     runs-on: ubuntu-latest
     permissions:
-      actions: write
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: postman-cs/postman-repo-sync-action@v0
@@ -20,4 +19,3 @@ jobs:
           env-runtime-urls-json: '{"prod":"https://atlas-treasury.vercel.app","dev":"http://localhost:3000"}'
           postman-api-key: ${{ secrets.POSTMAN_API_KEY }}
           postman-access-token: ${{ secrets.POSTMAN_ACCESS_TOKEN }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
