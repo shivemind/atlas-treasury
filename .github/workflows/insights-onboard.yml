@@ -15,6 +15,19 @@ jobs:
 
       - uses: postman-cs/postman-insights-onboarding-action@v0
         id: insights
+        env:
+          INPUT_PROJECT_NAME: atlas-treasury
+          INPUT_WORKSPACE_ID: 602f27e3-2272-4ead-8760-9d3dbe5078f9
+          INPUT_ENVIRONMENT_ID: 742997bb-d2c1-47e8-b543-dcc97e4b9480
+          INPUT_CLUSTER_NAME: atlas-production
+          INPUT_GIT_OWNER: shivemind
+          INPUT_GIT_REPOSITORY_NAME: atlas-treasury
+          INPUT_POSTMAN_ACCESS_TOKEN: ${{ secrets.POSTMAN_ACCESS_TOKEN }}
+          INPUT_POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
+          INPUT_POSTMAN_TEAM_ID: ${{ secrets.POSTMAN_TEAM_ID }}
+          INPUT_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_POLL_TIMEOUT_SECONDS: "180"
+          INPUT_POLL_INTERVAL_SECONDS: "10"
         with:
           project-name: atlas-treasury
           workspace-id: 602f27e3-2272-4ead-8760-9d3dbe5078f9
