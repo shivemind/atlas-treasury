@@ -13,6 +13,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Clean up stale feature branches
+        run: |
+          for branch in feature/api-catalog-onboarding feature/postman-integration; do
+            git push origin --delete "$branch" 2>/dev/null || true
+          done
+
       - uses: postman-cs/postman-insights-onboarding-action@v0
         id: insights
         env:
@@ -44,8 +50,11 @@ jobs:
       - name: Report
         if: always()
         run: |
-          echo "Status: ${{ steps.insights.outputs.status }}"
-          echo "Service: ${{ steps.insights.outputs.discovered-service-name }}"
-          echo "Collection: ${{ steps.insights.outputs.collection-id }}"
-          echo "App ID: ${{ steps.insights.outputs.application-id }}"
-          echo "Verification Token: ${{ steps.insights.outputs.verification-token }}"
+          echo "### Insights Onboarding Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Status | ${{ steps.insights.outputs.status }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Service | ${{ steps.insights.outputs.discovered-service-name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Collection | ${{ steps.insights.outputs.collection-id }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| App ID | ${{ steps.insights.outputs.application-id }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Verification Token | (set) |" >> $GITHUB_STEP_SUMMARY
