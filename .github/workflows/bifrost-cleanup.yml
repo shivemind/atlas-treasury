@@ -1,0 +1,41 @@
+name: Bifrost Cleanup
+on:
+  workflow_dispatch:
+
+jobs:
+  disconnect-stale-link:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Disconnect atlas-payments repo from treasury workspace
+        run: |
+          # The stale link: atlas-payments repo -> treasury workspace (602f27e3)
+          # We need to delete it so each repo can link to its own workspace
+
+          echo "Step 1: Check current filesystem for treasury workspace..."
+          RESP=$(curl -s -w "\n%{http_code}" -X POST \
+            "https://bifrost-premium-https-v4.gw.postman.com/ws/proxy" \
+            -H "Content-Type: application/json" \
+            -H "x-access-token: ${{ secrets.POSTMAN_ACCESS_TOKEN }}" \
+            -H "x-entity-team-id: " \
+            -d '{"service":"workspaces","method":"GET","path":"/workspaces/602f27e3-2272-4ead-8760-9d3dbe5078f9/filesystem","body":{}}')
+          echo "GET response: $RESP"
+
+          echo ""
+          echo "Step 2: Delete filesystem link..."
+          RESP=$(curl -s -w "\n%{http_code}" -X POST \
+            "https://bifrost-premium-https-v4.gw.postman.com/ws/proxy" \
+            -H "Content-Type: application/json" \
+            -H "x-access-token: ${{ secrets.POSTMAN_ACCESS_TOKEN }}" \
+            -H "x-entity-team-id: " \
+            -d '{"service":"workspaces","method":"DELETE","path":"/workspaces/602f27e3-2272-4ead-8760-9d3dbe5078f9/filesystem","body":{}}')
+          echo "DELETE response: $RESP"
+
+          echo ""
+          echo "Step 3: Also disconnect echo-atlas workspace..."
+          RESP=$(curl -s -w "\n%{http_code}" -X POST \
+            "https://bifrost-premium-https-v4.gw.postman.com/ws/proxy" \
+            -H "Content-Type: application/json" \
+            -H "x-access-token: ${{ secrets.POSTMAN_ACCESS_TOKEN }}" \
+            -H "x-entity-team-id: " \
+            -d '{"service":"workspaces","method":"DELETE","path":"/workspaces/40272a8d-a6c1-4d8a-bc17-6695a9f08972/filesystem","body":{}}')
+          echo "DELETE echo-atlas response: $RESP"
