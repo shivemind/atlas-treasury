@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   onboard:
@@ -46,5 +46,6 @@ jobs:
         run: |
           echo "Status: ${{ steps.insights.outputs.status }}"
           echo "Service: ${{ steps.insights.outputs.discovered-service-name }}"
+          echo "Collection: ${{ steps.insights.outputs.collection-id }}"
           echo "App ID: ${{ steps.insights.outputs.application-id }}"
           echo "Verification Token: ${{ steps.insights.outputs.verification-token }}"
