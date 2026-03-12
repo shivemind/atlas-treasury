@@ -23,9 +23,18 @@ jobs:
       - name: Login to Postman
         run: postman login --with-api-key ${{ secrets.POSTMAN_API_KEY }}
 
+      - name: Resolve Collection UID
+        id: resolve
+        run: |
+          COLL_UID=$(curl -sf "https://api.getpostman.com/collections?workspace=602f27e3-2272-4ead-8760-9d3dbe5078f9" \
+            -H "x-api-key: ${{ secrets.POSTMAN_API_KEY }}" \
+            | jq -r '.collections[] | select(.name | contains("Treasury API")) | .uid' | head -1)
+          echo "collection_uid=$COLL_UID" >> $GITHUB_OUTPUT
+          echo "Resolved collection: $COLL_UID"
+
       - name: Run Collection
         run: |
-          postman collection run 52400725-b9618c11-0fa3-4162-9919-c870008008f5 \
+          postman collection run ${{ steps.resolve.outputs.collection_uid }} \
             -e 52400725-742997bb-d2c1-47e8-b543-dcc97e4b9480 \
             --postman-api-key ${{ secrets.POSTMAN_API_KEY }}
 
@@ -34,18 +43,15 @@ jobs:
         run: |
           MONITOR_UID=$(curl -sf "https://api.getpostman.com/monitors" \
             -H "x-api-key: ${{ secrets.POSTMAN_API_KEY }}" \
-            | jq -r '.monitors[] | select(.name == "Atlas Treasury API - Health Monitor") | .uid' | head -1)
+            | jq -r '.monitors[] | select(.name | contains("Treasury API - Health")) | .uid' | head -1)
           if [ -n "$MONITOR_UID" ]; then
-            echo "Triggering monitor $MONITOR_UID"
             curl -sf -X POST "https://api.getpostman.com/monitors/$MONITOR_UID/run" \
               -H "x-api-key: ${{ secrets.POSTMAN_API_KEY }}" || true
-          else
-            echo "Monitor not found, skipping"
           fi
 
       - name: Summary
         if: always()
         run: |
           echo "### Postman Catalog Onboard - Atlas Treasury" >> $GITHUB_STEP_SUMMARY
-          echo "- **Collection**: 52400725-b9618c11-0fa3-4162-9919-c870008008f5" >> $GITHUB_STEP_SUMMARY
+          echo "- **Collection**: ${{ steps.resolve.outputs.collection_uid }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Workspace**: [602f27e3-2272-4ead-8760-9d3dbe5078f9](https://go.postman.co/workspace/602f27e3-2272-4ead-8760-9d3dbe5078f9)" >> $GITHUB_STEP_SUMMARY
