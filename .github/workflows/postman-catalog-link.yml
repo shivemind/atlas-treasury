@@ -1,0 +1,23 @@
+name: Postman Catalog Link
+on:
+  workflow_dispatch:
+
+jobs:
+  link-workspace:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: postman-cs/postman-repo-sync-action@v0
+        with:
+          project-name: atlas-treasury
+          workspace-id: 602f27e3-2272-4ead-8760-9d3dbe5078f9
+          generate-ci-workflow: false
+          repo-write-mode: none
+          environments-json: '["prod","dev"]'
+          env-runtime-urls-json: '{"prod":"https://atlas-treasury.vercel.app","dev":"http://localhost:3000"}'
+          postman-api-key: ${{ secrets.POSTMAN_API_KEY }}
+          postman-access-token: ${{ secrets.POSTMAN_ACCESS_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
