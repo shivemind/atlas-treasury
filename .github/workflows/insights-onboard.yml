@@ -34,6 +34,7 @@ jobs:
           INPUT_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           INPUT_POLL_TIMEOUT_SECONDS: "180"
           INPUT_POLL_INTERVAL_SECONDS: "10"
+          INPUT_SYSTEM_ENVIRONMENT_ID: 936898ce-cf73-4feb-827e-8a0e9d5e695e
         with:
           project-name: atlas-treasury
           workspace-id: 602f27e3-2272-4ead-8760-9d3dbe5078f9
@@ -46,6 +47,7 @@ jobs:
           postman-team-id: ${{ secrets.POSTMAN_TEAM_ID }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           poll-timeout-seconds: "180"
+          system-environment-id: 936898ce-cf73-4feb-827e-8a0e9d5e695e
 
       - name: Report
         if: always()
