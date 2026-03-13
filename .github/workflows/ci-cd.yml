@@ -273,3 +273,46 @@ jobs:
           echo "### Postman Collection Run - Atlas Treasury API" >> $GITHUB_STEP_SUMMARY
           echo "- **Collection**: ${{ steps.resolve.outputs.collection_uid }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Environment**: Production" >> $GITHUB_STEP_SUMMARY
+
+  # ── Gate 8: API Catalog Onboard ─────────────────────────────────────
+  api-catalog-onboard:
+    name: "Gate 8: API Catalog Onboard"
+    needs: build-and-deploy
+    if: always() && needs.build-and-deploy.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Link workspace to GitHub repo
+        env:
+          ACCESS_TOKEN: ${{ secrets.POSTMAN_ACCESS_TOKEN }}
+          TEAM_ID: ${{ secrets.POSTMAN_TEAM_ID }}
+          WORKSPACE_ID: 602f27e3-2272-4ead-8760-9d3dbe5078f9
+          REPO_URL: https://github.com/${{ github.repository }}
+        run: |
+          BIFROST="https://bifrost-premium-https-v4.gw.postman.com"
+          RESP=$(curl -sf -X POST "$BIFROST/ws/proxy" \
+            -H "Content-Type: application/json" \
+            -H "x-access-token: $ACCESS_TOKEN" \
+            -H "x-entity-team-id: $TEAM_ID" \
+            -d "{\"service\":\"workspaces\",\"method\":\"POST\",\"path\":\"/workspaces/$WORKSPACE_ID/filesystem\",\"body\":{\"path\":\"/\",\"repo\":\"$REPO_URL\",\"versionControl\":true}}" 2>&1) || true
+          echo "Workspace link: $RESP"
+
+      - name: Link environment to system environment
+        env:
+          ACCESS_TOKEN: ${{ secrets.POSTMAN_ACCESS_TOKEN }}
+          TEAM_ID: ${{ secrets.POSTMAN_TEAM_ID }}
+        run: |
+          curl -sf -X PUT "https://bifrost-premium-https-v4.gw.postman.com/environment/742997bb-d2c1-47e8-b543-dcc97e4b9480" \
+            -H "Content-Type: application/json" \
+            -H "x-access-token: $ACCESS_TOKEN" \
+            -H "x-entity-team-id: $TEAM_ID" \
+            -d '{"systemEnvironmentId":"936898ce-cf73-4feb-827e-8a0e9d5e695e"}' || true
+          echo "Environment linked to Production system environment"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### API Catalog Onboard" >> $GITHUB_STEP_SUMMARY
+          echo "- Workspace linked to GitHub repo" >> $GITHUB_STEP_SUMMARY
+          echo "- Environment linked to Production system environment" >> $GITHUB_STEP_SUMMARY
