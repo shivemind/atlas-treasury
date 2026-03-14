@@ -119,17 +119,36 @@ if [ -z "$COLLECTION_UID" ]; then
 fi
 echo "    Collection: ${COLLECTION_UID}"
 
-# 2a-ii: Update collection description with repo link and commit SHA
-if [ "$COLLECTION_UID" != "unknown" ] && [ -n "$GITHUB_REPO_URL" ]; then
-  echo "    Linking GitHub repo in collection description..."
+# 2a-ii: Update collection description and add collection-level test scripts
+if [ "$COLLECTION_UID" != "unknown" ]; then
+  echo "    Adding collection-level test scripts and metadata..."
   COLL_DETAIL=$(postman_api GET "/collections/${COLLECTION_UID}")
-  COLL_DESC="Source: ${GITHUB_REPO_URL} | Commit: ${GITHUB_SHA} | Auto-synced from OpenAPI spec via CI/CD"
+  COLL_DESC="Source: ${GITHUB_REPO_URL:-n/a} | Commit: ${GITHUB_SHA} | Auto-synced from OpenAPI spec via CI/CD"
 
-  DESC_BODY_FILE=$(mktemp)
-  echo "$COLL_DETAIL" | jq --arg desc "$COLL_DESC" \
-    '.collection.info.description = $desc' > "$DESC_BODY_FILE"
-  postman_api PUT "/collections/${COLLECTION_UID}" -d @"$DESC_BODY_FILE" > /dev/null 2>&1 || echo "    (description update skipped)"
-  rm -f "$DESC_BODY_FILE"
+  PATCH_BODY_FILE=$(mktemp)
+  echo "$COLL_DETAIL" | jq --arg desc "$COLL_DESC" '
+    .collection.info.description = $desc |
+    .collection.event = [
+      { "listen": "test",
+        "script": {
+          "type": "text/javascript",
+          "exec": [
+            "pm.test(\"Status code is successful\", function () {",
+            "    pm.expect(pm.response.code).to.be.within(200, 399);",
+            "});",
+            "pm.test(\"Response time is under 5s\", function () {",
+            "    pm.expect(pm.response.responseTime).to.be.below(5000);",
+            "});",
+            "pm.test(\"Valid JSON response\", function () {",
+            "    if (pm.response.text().length > 0) { pm.response.to.have.jsonBody(); }",
+            "});"
+          ]
+        }
+      }
+    ]' > "$PATCH_BODY_FILE"
+  postman_api PUT "/collections/${COLLECTION_UID}" -d @"$PATCH_BODY_FILE" > /dev/null 2>&1 || echo "    (collection update skipped)"
+  rm -f "$PATCH_BODY_FILE"
+  echo "    Collection updated with tests and description"
 fi
 
 echo "==> 2b: Create/update environments (Dev + Production)"
