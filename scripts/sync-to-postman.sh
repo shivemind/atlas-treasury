@@ -195,8 +195,9 @@ if EXISTING_MONITORS=$(postman_api GET "/monitors?workspace=${POSTMAN_WORKSPACE_
     echo "    Monitor already exists: ${EXISTING_MON_ID}"
     MON_ID="$EXISTING_MON_ID"
   elif [ "$COLLECTION_UID" != "unknown" ]; then
+    MON_ENV="${PROD_ENV_ID:-$DEV_ENV_ID}"
     MON_RESP=$(postman_api POST "/monitors?workspace=${POSTMAN_WORKSPACE_ID}" \
-      -d "$(jq -n --arg name "$MON_NAME" --arg coll "$COLLECTION_UID" --arg env "$DEV_ENV_ID" \
+      -d "$(jq -n --arg name "$MON_NAME" --arg coll "$COLLECTION_UID" --arg env "$MON_ENV" \
         '{monitor: {name: $name, collection: $coll, environment: $env, schedule: {cron: "0 */6 * * *", timezone: "America/New_York"}}}')" 2>/dev/null) || true
     MON_ID=$(echo "$MON_RESP" | jq -r '.monitor.id // empty' 2>/dev/null || echo "")
     if [ -n "$MON_ID" ]; then
