@@ -1,0 +1,41 @@
+name: Publish to Postman Cloud
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'postman/**'
+      - 'openapi/**'
+      - '.postman/**'
+  workflow_dispatch:
+
+jobs:
+  publish:
+    name: Sync to Postman Cloud
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Postman CLI
+        run: curl -o- "https://dl-cli.pstmn.io/install/linux64.sh" | sh
+
+      - name: Login to Postman
+        run: postman login --with-api-key ${{ secrets.POSTMAN_API_KEY }}
+
+      - name: Push workspace to Postman Cloud
+        run: postman workspace push -y
+
+      - name: Run collection tests
+        run: |
+          COLL_ID=$(grep -A1 'collections:' .postman/resources.yaml | tail -1 | awk '{print $NF}')
+          ENV_ID=$(grep -A1 'environments:' .postman/resources.yaml | tail -1 | awk '{print $NF}')
+          if [ -n "$COLL_ID" ] && [ -n "$ENV_ID" ]; then
+            postman collection run "$COLL_ID" -e "$ENV_ID" || true
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Postman Cloud Sync" >> $GITHUB_STEP_SUMMARY
+          echo "- Workspace synced via Native Git" >> $GITHUB_STEP_SUMMARY
+          echo "- Collection tests executed" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,32 @@
+﻿{
+    "id":  "742997bb-d2c1-47e8-b543-dcc97e4b9480",
+    "name":  "Atlas Treasury API - Production",
+    "owner":  "52400725",
+    "createdAt":  "2026-03-11T21:32:09.000Z",
+    "updatedAt":  "2026-03-14T03:05:25.000Z",
+    "values":  [
+                   {
+                       "key":  "baseUrl",
+                       "value":  "https://atlas-treasury.vercel.app",
+                       "enabled":  true
+                   },
+                   {
+                       "key":  "apiVersion",
+                       "value":  "0.2.0",
+                       "enabled":  true
+                   },
+                   {
+                       "key":  "apiKey",
+                       "value":  "test-api-key",
+                       "enabled":  true,
+                       "type":  "secret"
+                   },
+                   {
+                       "key":  "githubRepo",
+                       "value":  "https://github.com/shivemind/atlas-treasury",
+                       "enabled":  true
+                   }
+               ],
+    "uid":  "52400725-742997bb-d2c1-47e8-b543-dcc97e4b9480",
+    "isPublic":  false
+}

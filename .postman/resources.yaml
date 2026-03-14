@@ -1,0 +1,7 @@
+workspace:
+  id: 602f27e3-2272-4ead-8760-9d3dbe5078f9
+cloudResources:
+  collections:
+    ../postman/collections/atlas-treasury-api.json: ef6554a5-364a-4611-9f79-b7ff6c1173c1
+  environments:
+    ../postman/environments/production.json: 742997bb-d2c1-47e8-b543-dcc97e4b9480
