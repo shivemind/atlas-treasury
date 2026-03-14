@@ -10,8 +10,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  publish:
-    name: Sync to Postman Cloud
+  publish-and-test:
+    name: Sync & Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,21 +25,35 @@ jobs:
       - name: Push workspace to Postman Cloud
         run: postman workspace push -y
 
-  test:
-    name: Run API Tests
-    needs: publish
-    runs-on: ubuntu-latest
-    steps:
-      - name: Run Postman Collection
-        uses: postmanlabs/postman-cli-action@v1
-        with:
-          command: 'collection run 591b044d-f724-4439-8936-0c3efec537c4 -e 95dcc2d7-2489-4a4e-929d-2a6c7678c8c3'
-          api-key: ${{ secrets.POSTMAN_API_KEY }}
-        continue-on-error: true
+      - name: Discover and run collection tests
+        env:
+          POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
+          WORKSPACE_ID: ce7548a7-95d6-4445-a7fc-fa76181e564a
+        run: |
+          COLL_UID=$(curl -sf "https://api.getpostman.com/workspaces/$WORKSPACE_ID" \
+            -H "x-api-key: $POSTMAN_API_KEY" | \
+            jq -r '.workspace.collections[0].uid')
+
+          ENV_UID=$(curl -sf "https://api.getpostman.com/workspaces/$WORKSPACE_ID" \
+            -H "x-api-key: $POSTMAN_API_KEY" | \
+            jq -r '[.workspace.environments[] | select(.name | test("Production|Prod"; "i"))][0].uid // .workspace.environments[0].uid')
+
+          echo "Collection UID: $COLL_UID"
+          echo "Environment UID: $ENV_UID"
+
+          if [ "$COLL_UID" != "null" ] && [ -n "$COLL_UID" ]; then
+            if [ "$ENV_UID" != "null" ] && [ -n "$ENV_UID" ]; then
+              postman collection run "$COLL_UID" -e "$ENV_UID" || true
+            else
+              postman collection run "$COLL_UID" || true
+            fi
+          else
+            echo "No collection found in workspace"
+          fi
 
       - name: Summary
         if: always()
         run: |
-          echo "### Postman API Tests" >> $GITHUB_STEP_SUMMARY
-          echo "- Collection: 591b044d-f724-4439-8936-0c3efec537c4" >> $GITHUB_STEP_SUMMARY
-          echo "- Environment: 95dcc2d7-2489-4a4e-929d-2a6c7678c8c3" >> $GITHUB_STEP_SUMMARY
+          echo "### Postman Cloud Sync & Tests" >> $GITHUB_STEP_SUMMARY
+          echo "- Workspace ID: ce7548a7-95d6-4445-a7fc-fa76181e564a" >> $GITHUB_STEP_SUMMARY
+          echo "- Workspace synced and collection tests run" >> $GITHUB_STEP_SUMMARY
