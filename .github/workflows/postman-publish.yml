@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Postman CLI
-        run: curl -o- "https://dl-cli.pstmn.io/install/linux64.sh" | sh
+        run: curl -o- "https://dl-cli.pstmn.io/install/unix.sh" | sh
 
       - name: Login to Postman
         run: postman login --with-api-key ${{ secrets.POSTMAN_API_KEY }}
@@ -25,17 +25,21 @@ jobs:
       - name: Push workspace to Postman Cloud
         run: postman workspace push -y
 
-      - name: Run collection tests
-        run: |
-          COLL_ID=$(grep -A1 'collections:' .postman/resources.yaml | tail -1 | awk '{print $NF}')
-          ENV_ID=$(grep -A1 'environments:' .postman/resources.yaml | tail -1 | awk '{print $NF}')
-          if [ -n "$COLL_ID" ] && [ -n "$ENV_ID" ]; then
-            postman collection run "$COLL_ID" -e "$ENV_ID" || true
-          fi
+  test:
+    name: Run API Tests
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run Postman Collection
+        uses: postmanlabs/postman-cli-action@v1
+        with:
+          command: 'collection run 52400725-591b044d-f724-4439-8936-0c3efec537c4 -e 95dcc2d7-2489-4a4e-929d-2a6c7678c8c3'
+          api-key: ${{ secrets.POSTMAN_API_KEY }}
+        continue-on-error: true
 
       - name: Summary
         if: always()
         run: |
-          echo "### Postman Cloud Sync" >> $GITHUB_STEP_SUMMARY
+          echo "### Postman Cloud Sync & Tests" >> $GITHUB_STEP_SUMMARY
           echo "- Workspace synced via Native Git" >> $GITHUB_STEP_SUMMARY
-          echo "- Collection tests executed" >> $GITHUB_STEP_SUMMARY
+          echo "- Collection tests executed against 52400725-591b044d-f724-4439-8936-0c3efec537c4" >> $GITHUB_STEP_SUMMARY
